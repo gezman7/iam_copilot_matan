@@ -341,7 +341,7 @@ Provide your answer in a clear, structured format with analysis of the security 
         # Compile graph with memory checkpointer for conversation persistence
         return workflow.compile(checkpointer=self.memory)
     
-    def process_query(self, question: str, thread_id: str = "default") -> Dict[str, Any]:
+    def process_speech_query(self, question: str, thread_id: str = "default") -> Dict[str, Any]:
         """Process a natural language query about IAM risks"""
         try:
             # Format the user query
@@ -400,8 +400,15 @@ Provide your answer in a clear, structured format with analysis of the security 
                 "error": e
             }
 
-    async def stream_query(self, question: str, thread_id: str = "default"):
-        """Stream a natural language query about IAM risks with incremental responses"""
+    async def stream_query(self, question: str, thread_id: str = "default", stream_mode: str = "values"):
+        """
+        Stream a natural language query about IAM risks with incremental responses
+        
+        Args:
+            question: The natural language query to process
+            thread_id: Unique ID for the conversation thread (for persistence)
+            stream_mode: The streaming mode to use - 'values', 'steps', or 'intermediate_steps'
+        """
         try:
             # Format the user query
             input_message = HumanMessage(content=question)
@@ -410,10 +417,7 @@ Provide your answer in a clear, structured format with analysis of the security 
             config = {"configurable": {"thread_id": thread_id}}
             
             # Stream the agent with thread_id config for conversation persistence
-            stream = self.agent.stream({"messages": [input_message]}, config, stream_mode="values")
-            
-            # Create an async generator from the stream
-            for chunk in stream:
+            for chunk in self.agent.stream({"messages": [input_message]}, config, stream_mode=stream_mode):
                 yield chunk
             
         except Exception as e:
@@ -424,6 +428,156 @@ Provide your answer in a clear, structured format with analysis of the security 
                 "error_type": "processing_error",
                 "error": e
             }
+    
+    async def stream_with_details(self, question: str, thread_id: str = "default"):
+        """
+        Stream a query with detailed information about agent steps and thought process
+        
+        Args:
+            question: The natural language query to process
+            thread_id: Unique ID for the conversation thread (for persistence)
+        """
+        try:
+            # Format the user query
+            input_message = HumanMessage(content=question)
+            
+            # Set up configuration with thread_id for conversation persistence
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Track the state of output for better formatting
+            steps_started = False
+            current_step = None
+            seen_messages = set()  # To track unique messages
+            
+            # First try with intermediate_steps mode
+            try:
+                # Stream in intermediate_steps mode to get details on agent's thought process
+                async for chunk in self.stream_query(question, thread_id, stream_mode="intermediate_steps"):
+                    if "intermediate_steps" in chunk:
+                        # Extract steps information
+                        if not steps_started:
+                            yield {"type": "start_steps", "content": "Starting agent execution..."}
+                            steps_started = True
+                        
+                        step = chunk["intermediate_steps"][-1] if chunk["intermediate_steps"] else None
+                        if step and step != current_step:
+                            current_step = step
+                            action = step.get("action", {})
+                            action_name = action.get("name", "Unknown action")
+                            action_input = action.get("args", {})
+                            
+                            # Yield information about the current step
+                            yield {
+                                "type": "step", 
+                                "name": action_name, 
+                                "input": action_input,
+                                "content": f"Executing {action_name} with input: {action_input}"
+                            }
+                            
+                            # If there's an observation, yield that too
+                            if "observation" in step:
+                                yield {
+                                    "type": "observation",
+                                    "content": f"Observation: {step['observation']}"
+                                }
+                    
+                    if "messages" in chunk and chunk["messages"]:
+                        last_message = chunk["messages"][-1]
+                        if hasattr(last_message, "content"):
+                            # Only yield new messages
+                            msg_id = id(last_message)
+                            if msg_id not in seen_messages and last_message.content:
+                                seen_messages.add(msg_id)
+                                yield {
+                                    "type": "response",
+                                    "content": last_message.content
+                                }
+            except Exception as e:
+                logger.warning(f"Intermediate steps streaming not fully supported: {e}")
+                # Fall back to simpler streaming if intermediate_steps mode fails
+                yield {"type": "fallback", "content": "Falling back to simpler streaming mode"}
+                
+                # Use values mode instead
+                async for chunk in self.stream_query(question, thread_id, stream_mode="values"):
+                    if "messages" in chunk and chunk["messages"]:
+                        last_message = chunk["messages"][-1]
+                        if hasattr(last_message, "content"):
+                            msg_id = id(last_message)
+                            if msg_id not in seen_messages and last_message.content:
+                                seen_messages.add(msg_id)
+                                # Look for tool usage in the content
+                                if "tool" in last_message.content.lower() or "executing" in last_message.content.lower():
+                                    yield {
+                                        "type": "step",
+                                        "name": "inferred_tool",
+                                        "content": last_message.content
+                                    }
+                                else:
+                                    yield {
+                                        "type": "response",
+                                        "content": last_message.content
+                                    }
+            
+            yield {"type": "end", "content": "Agent execution completed."}
+            
+        except Exception as e:
+            logger.error(f"Error streaming query with details: {e}")
+            yield {
+                "type": "error",
+                "content": f"I encountered an error processing your query: {str(e)}",
+                "error_type": "processing_error",
+                "error": e
+            }
+            
+    async def stream_simplified(self, question: str, thread_id: str = "default"):
+        """
+        Stream a query with a simplified output format that works with any LLM
+        
+        Args:
+            question: The natural language query to process
+            thread_id: Unique ID for the conversation thread (for persistence)
+        """
+        try:
+            # Format the user query
+            input_message = HumanMessage(content=question)
+            
+            # Set up configuration with thread_id for conversation persistence
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Track seen message content to avoid duplicates
+            seen_content = set()
+            
+            # Yield start event
+            yield {"type": "start", "content": "Starting query processing..."}
+            
+            # Stream using values mode (most widely supported)
+            async for chunk in self.stream_query(question, thread_id, stream_mode="values"):
+                if "messages" in chunk and chunk["messages"]:
+                    for msg in chunk["messages"]:
+                        if hasattr(msg, "content") and msg.content:
+                            # Only yield new content
+                            if msg.content not in seen_content:
+                                seen_content.add(msg.content)
+                                
+                                # Determine message type
+                                if isinstance(msg, AIMessage):
+                                    yield {"type": "ai", "content": msg.content}
+                                elif isinstance(msg, ToolMessage):
+                                    yield {"type": "tool", "content": msg.content}
+                                elif isinstance(msg, HumanMessage):
+                                    yield {"type": "human", "content": msg.content}
+                                else:
+                                    yield {"type": "other", "content": msg.content}
+            
+            # Yield end event
+            yield {"type": "end", "content": "Query processing completed."}
+            
+        except Exception as e:
+            logger.error(f"Error streaming simplified query: {e}")
+            yield {
+                "type": "error",
+                "content": f"Error: {str(e)}"
+            }
 
 
 # Example of usage
@@ -431,51 +585,73 @@ if __name__ == "__main__":
     import os
     import traceback
     import asyncio
+    from datetime import datetime
     
     # Create IAMCopilot with default Ollama model
     copilot = IAMCopilot(db_path="iam_risks.db")
     
     # Example conversation with thread_id for persistence
-    thread_id = "conversation-1"
+    thread_id = f"conversation-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     
-    # Define an async function to handle streaming
-    async def run_streaming_example():
+    # Define an async function to handle basic streaming
+    async def run_basic_streaming_example():
+        print("\n=== Basic Streaming Example ===\n")
+        
         # Initial query
         query = "How many users have weak MFA?"
-        print(f"Initial query: {query}")
+        print(f"User: {query}")
         
-        # Stream initial query
-        async for event in copilot.stream_query(query, thread_id):
+        # Stream initial query in values mode
+        async for event in copilot.stream_query(query, thread_id, stream_mode="values"):
             # Get the last message which is the most recent response
             if "messages" in event and event["messages"]:
                 last_message = event["messages"][-1]
-                if hasattr(last_message, "content"):
+                if hasattr(last_message, "content") and last_message.content:
                     print(f"AI: {last_message.content}")
         
         # Follow-up query
         follow_up = "Which department has the most users with this issue?"
-        print(f"\nFollow-up query: {follow_up}")
+        print(f"\nUser: {follow_up}")
         
         # Stream follow-up query
-        async for event in copilot.stream_query(follow_up, thread_id):
-            # Get the last message which is the most recent response
+        async for event in copilot.stream_query(follow_up, thread_id, stream_mode="values"):
             if "messages" in event and event["messages"]:
                 last_message = event["messages"][-1]
-                if hasattr(last_message, "content"):
-                    print(f"AI: {last_message.content}")
-        
-        # Second follow-up query for security recommendations
-        security_query = "What security recommendations do you have for these weak MFA users?"
-        print(f"\nSecurity recommendations query: {security_query}")
-        
-        # Stream security recommendations query
-        async for event in copilot.stream_query(security_query, thread_id):
-            # Get the last message which is the most recent response
-            if "messages" in event and event["messages"]:
-                last_message = event["messages"][-1]
-                if hasattr(last_message, "content"):
+                if hasattr(last_message, "content") and last_message.content:
                     print(f"AI: {last_message.content}")
     
+    # Define an async function to handle detailed streaming
+    async def run_detailed_streaming_example():
+        print("\n=== Detailed Streaming Example ===\n")
+        
+        # Query with detailed streaming
+        query = "What security recommendations do you have for weak MFA users?"
+        print(f"User: {query}")
+        
+        # Stream with detailed information about agent steps
+        async for event in copilot.stream_with_details(query, thread_id):
+            event_type = event.get("type", "unknown")
+            content = event.get("content", "")
+            
+            if event_type == "start_steps":
+                print("\n🚀 Starting agent execution...")
+            elif event_type == "step":
+                print(f"\n⚙️ Step: {event.get('name', 'Unknown')}")
+                print(f"   Input: {event.get('input', {})}")
+            elif event_type == "observation":
+                print(f"\n👁️ {content}")
+            elif event_type == "response":
+                print(f"\n🤖 Response: {content}")
+            elif event_type == "end":
+                print(f"\n✅ {content}")
+            elif event_type == "error":
+                print(f"\n❌ Error: {content}")
+    
+    # Run both streaming examples
+    async def run_all_examples():
+        await run_basic_streaming_example()
+        await run_detailed_streaming_example()
+    
     # Run the async function
-    asyncio.run(run_streaming_example())
+    asyncio.run(run_all_examples())
 

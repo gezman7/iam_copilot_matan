@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-from search_detection_loader import IAMCopilot
+from src.Iam_copilot import IAMCopilot
 
 # Set up logging
 logging.basicConfig(
@@ -225,7 +225,7 @@ class LLMValidationTest:
             logger.info(f"Expected data: {expected_data}")
             
             # Run query through SearchDetectionSnapshot
-            agent_result = self.search_agent.process_query(query)
+            agent_result = self.search_agent.process_speech_query(query)
             
             # Log the full trajectory for debugging
             logger.debug(f"Agent trajectory: {json.dumps(agent_result.get('trajectory', []), indent=2)}")
