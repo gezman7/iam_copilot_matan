@@ -1,0 +1,506 @@
+{
+  "Users": [
+    {
+      "UserID": "U001",
+      "Name": "Alice Johnson",
+      "Email": "alice@example.com",
+      "Department": "Engineering",
+      "Position": "Software Engineer",
+      "EmploymentStartDate": "2023-01-01",
+      "LastLogin": "2023-04-01",
+      "MFAStatus": "none",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U002",
+      "Name": "Bob Smith",
+      "Email": "bob@example.com",
+      "Department": "IT",
+      "Position": "IT Manager",
+      "EmploymentStartDate": "2022-01-01",
+      "LastLogin": "",
+      "MFAStatus": "sms",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U003",
+      "Name": "Charlie Davis",
+      "Email": "charlie@example.com",
+      "Department": "Finance",
+      "Position": "Accountant",
+      "EmploymentStartDate": "2021-06-15",
+      "LastLogin": "2022-10-01",
+      "MFAStatus": "authenticator_app",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U004",
+      "Name": "David Brown",
+      "Email": "david.brown@example.com",
+      "Department": "Engineering",
+      "Position": "DevOps Engineer",
+      "EmploymentStartDate": "2021-11-20",
+      "LastLogin": "2023-04-06T10:30:00",
+      "MFAStatus": "hardware_security_key",
+      "Status": "active",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U005",
+      "Name": "Eva Martinez",
+      "Email": "eva.martinez@example.com",
+      "Department": "Marketing",
+      "Position": "Marketing Director",
+      "EmploymentStartDate": "2019-08-15",
+      "LastLogin": "2023-04-05T16:45:00",
+      "MFAStatus": "biometric",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U006",
+      "Name": "Frank Wilson",
+      "Email": "frank.wilson@example.com",
+      "Department": "Finance",
+      "Position": "Financial Analyst",
+      "EmploymentStartDate": "2020-05-12",
+      "LastLogin": "2023-04-06T11:20:00",
+      "MFAStatus": "authenticator_app",
+      "Status": "offboarded",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U007",
+      "Name": "Grace Lee",
+      "Email": "grace.lee@example.com",
+      "Department": "Engineering",
+      "Position": "Frontend Developer",
+      "EmploymentStartDate": "2023-03-01",
+      "LastLogin": "2023-04-05T15:30:00",
+      "MFAStatus": "push_notification",
+      "Status": "inactive",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U008",
+      "Name": "Henry Chen",
+      "Email": "henry.chen@example.com",
+      "Department": "Sales",
+      "Position": "Sales Representative",
+      "EmploymentStartDate": "2021-09-15",
+      "LastLogin": "2023-01-04T14:45:00",
+      "MFAStatus": "none",
+      "Status": "active",
+      "AccountType": "local"
+    },
+    {
+      "UserID": "U009",
+      "Name": "Irene Davis",
+      "Email": "irene.davis@example.com",
+      "Department": "HR",
+      "Position": "Recruitment Specialist",
+      "EmploymentStartDate": "2020-11-20",
+      "LastLogin": "2023-04-06T09:00:00",
+      "MFAStatus": "email",
+      "Status": "offboarded",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U010",
+      "Name": "Jack Miller",
+      "Email": "jack.miller@example.com",
+      "Department": "Engineering",
+      "Position": "Backend Developer",
+      "EmploymentStartDate": "2021-06-10",
+      "LastLogin": "2023-04-05T16:15:00",
+      "MFAStatus": "authenticator_app",
+      "Status": "active",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U011",
+      "Name": "Karen Taylor",
+      "Email": "karen.taylor@example.com",
+      "Department": "Marketing",
+      "Position": "Content Writer",
+      "EmploymentStartDate": "2023-02-15",
+      "LastLogin": "2023-01-04T13:30:00",
+      "MFAStatus": "sms",
+      "Status": "active",
+      "AccountType": "local"
+    },
+    {
+      "UserID": "U012",
+      "Name": "Liam Anderson",
+      "Email": "liam.anderson@example.com",
+      "Department": "Finance",
+      "Position": "Accountant",
+      "EmploymentStartDate": "2020-08-22",
+      "LastLogin": "2023-04-06T10:45:00",
+      "MFAStatus": "hardware_security_key",
+      "Status": "offboarded",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U013",
+      "Name": "Mia Thompson",
+      "Email": "mia.thompson@example.com",
+      "Department": "Engineering",
+      "Position": "QA Engineer",
+      "EmploymentStartDate": "2023-02-05",
+      "LastLogin": "2023-02-05T14:00:00",
+      "MFAStatus": "push_notification",
+      "Status": "inactive",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U014",
+      "Name": "Noah Garcia",
+      "Email": "noah.garcia@example.com",
+      "Department": "Sales",
+      "Position": "Sales Executive",
+      "EmploymentStartDate": "2023-03-10",
+      "LastLogin": "2022-12-04T15:15:00",
+      "MFAStatus": "none",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U015",
+      "Name": "Olivia Martinez",
+      "Email": "olivia.martinez@example.com",
+      "Department": "HR",
+      "Position": "Training Coordinator",
+      "EmploymentStartDate": "2020-10-15",
+      "LastLogin": "2023-04-06T08:30:00",
+      "MFAStatus": "biometric",
+      "Status": "offboarded",
+      "AccountType": "local"
+    },
+    {
+      "UserID": "U016",
+      "Name": "Peter Wilson",
+      "Email": "peter.wilson@example.com",
+      "Department": "Engineering",
+      "Position": "System Architect",
+      "EmploymentStartDate": "2019-05-20",
+      "LastLogin": "2023-04-05T17:00:00",
+      "MFAStatus": "hardware_security_key",
+      "Status": "active",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U017",
+      "Name": "Quinn Brown",
+      "Email": "quinn.brown@example.com",
+      "Department": "Marketing",
+      "Position": "Social Media Manager",
+      "EmploymentStartDate": "2021-04-12",
+      "LastLogin": "2022-10-04T16:30:00",
+      "MFAStatus": "push_notification",
+      "Status": "inactive",
+      "AccountType": "local"
+    },
+    {
+      "UserID": "U018",
+      "Name": "Ryan Clark",
+      "Email": "ryan.clark@example.com",
+      "Department": "Finance",
+      "Position": "Financial Controller",
+      "EmploymentStartDate": "2020-02-18",
+      "LastLogin": "2023-04-06T11:45:00",
+      "MFAStatus": "authenticator_app",
+      "Status": "offboarded",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U019",
+      "Name": "Sophia Lewis",
+      "Email": "sophia.lewis@example.com",
+      "Department": "Engineering",
+      "Position": "Mobile Developer",
+      "EmploymentStartDate": "2021-08-25",
+      "LastLogin": "2022-09-05T15:45:00",
+      "MFAStatus": "biometric",
+      "Status": "active",
+      "AccountType": "local"
+    },
+    {
+      "UserID": "U020",
+      "Name": "Thomas Walker",
+      "Email": "thomas.walker@example.com",
+      "Department": "Sales",
+      "Position": "Sales Director",
+      "EmploymentStartDate": "2019-12-10",
+      "LastLogin": "2022-08-04T17:15:00",
+      "MFAStatus": "sms",
+      "Status": "inactive",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U021",
+      "Name": "Uma Patel",
+      "Email": "uma.patel@example.com",
+      "Department": "Engineering",
+      "Position": "Security Engineer",
+      "EmploymentStartDate": "2023-03-15",
+      "LastLogin": "",
+      "MFAStatus": "authenticator_app",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U022",
+      "Name": "Victor Rodriguez",
+      "Email": "victor.rodriguez@example.com",
+      "Department": "IT",
+      "Position": "IT Support Specialist",
+      "EmploymentStartDate": "2023-03-22",
+      "LastLogin": "",
+      "MFAStatus": "none",
+      "Status": "active", 
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U023",
+      "Name": "Wendy Kim",
+      "Email": "wendy.kim@example.com",
+      "Department": "Finance",
+      "Position": "Budget Analyst",
+      "EmploymentStartDate": "2023-04-01",
+      "LastLogin": "",
+      "MFAStatus": "email",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U024",
+      "Name": "Xavier Johnson",
+      "Email": "xavier.johnson@example.com",
+      "Department": "HR",
+      "Position": "HR Manager",
+      "EmploymentStartDate": "2023-03-25",
+      "LastLogin": "",
+      "MFAStatus": "sms",
+      "Status": "active",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U025",
+      "Name": "Yasmine Ali",
+      "Email": "yasmine.ali@example.com",
+      "Department": "Marketing",
+      "Position": "Digital Marketing Specialist",
+      "EmploymentStartDate": "2023-03-20",
+      "LastLogin": "",
+      "MFAStatus": "none",
+      "Status": "active",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U026",
+      "Name": "Zach Thomas",
+      "Email": "zach.thomas@example.com",
+      "Department": "Sales",
+      "Position": "Account Executive",
+      "EmploymentStartDate": "2022-07-18",
+      "LastLogin": "2022-07-20T15:50:00",
+      "MFAStatus": "email",
+      "Status": "inactive",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U027",
+      "Name": "Amy Nguyen",
+      "Email": "amy.nguyen@example.com",
+      "Department": "Engineering",
+      "Position": "Data Engineer",
+      "EmploymentStartDate": "2021-09-30",
+      "LastLogin": "2022-09-31T14:20:00",
+      "MFAStatus": "authenticator_app",
+      "Status": "inactive",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U028",
+      "Name": "Bradley Cooper",
+      "Email": "bradley.cooper@example.com",
+      "Department": "IT",
+      "Position": "Network Administrator",
+      "EmploymentStartDate": "2020-04-15",
+      "LastLogin": "2022-07-05T11:35:00",
+      "MFAStatus": "hardware_security_key",
+      "Status": "active",
+      "AccountType": "service"
+    },
+    {
+      "UserID": "U029",
+      "Name": "Christina Wong",
+      "Email": "christina.wong@example.com",
+      "Department": "Finance",
+      "Position": "Financial Planner",
+      "EmploymentStartDate": "2022-11-10",
+      "LastLogin": "2023-04-06T09:55:00",
+      "MFAStatus": "biometric",
+      "Status": "offboarded",
+      "AccountType": "regular"
+    },
+    {
+      "UserID": "U030",
+      "Name": "Derek Phillips",
+      "Email": "derek.phillips@example.com",
+      "Department": "HR",
+      "Position": "Benefits Coordinator",
+      "EmploymentStartDate": "2021-03-22",
+      "LastLogin": "2023-04-05T13:40:00",
+      "MFAStatus": "sms",
+      "Status": "offboarded",
+      "AccountType": "regular"
+    }
+  ],
+
+  "Roles": [
+    {
+      "RoleID": "R001",
+      "RoleName": "Admin",
+      "Description": "Full administrative access",
+      "Permissions": ["Create", "Read", "Update", "Delete"],
+      "AssociatedUsers": ["U001", "U016", "U021", "U022", "U023", "U024", "U025"]
+    },
+    {
+      "RoleID": "R002",
+      "RoleName": "Viewer",
+      "Description": "Read-only access",
+      "Permissions": ["Read"],
+      "AssociatedUsers": ["U002", "U003", "U008", "U014"]
+    },
+    {
+      "RoleID": "R003",
+      "RoleName": "Editor",
+      "Description": "Can create and edit content",
+      "Permissions": ["Create", "Read", "Update"],
+      "AssociatedUsers": ["U004", "U007", "U010", "U013", "U019"]
+    },
+    {
+      "RoleID": "R004",
+      "RoleName": "Manager",
+      "Description": "Team management access",
+      "Permissions": ["Read", "Update", "Approve"],
+      "AssociatedUsers": ["U005", "U020"]
+    },
+    {
+      "RoleID": "R005",
+      "RoleName": "Finance",
+      "Description": "Financial system access",
+      "Permissions": ["Read", "Update", "Approve"],
+      "AssociatedUsers": ["U006", "U012", "U018", "U023", "U029", "U030"]
+    }
+  ],
+
+  "Applications": [
+    {
+      "ApplicationID": "A001",
+      "ApplicationName": "Payroll System",
+      "Description": "Handles employee payroll",
+      "AssociatedUsers": ["U003", "U009", "U015", "U029"]
+    },
+    {
+      "ApplicationID": "A002",
+      "ApplicationName": "CRM System",
+      "Description": "Customer relationship management",
+      "AssociatedUsers": ["U002", "U008", "U014", "U020"]
+    },
+    {
+      "ApplicationID": "A003",
+      "ApplicationName": "Project Management",
+      "Description": "Team project tracking",
+      "AssociatedUsers": ["U001", "U004", "U007", "U010", "U013", "U016", "U019"]
+    },
+    {
+      "ApplicationID": "A004",
+      "ApplicationName": "Marketing Platform",
+      "Description": "Marketing campaign management",
+      "AssociatedUsers": ["U005", "U011", "U017"]
+    },
+    {
+      "ApplicationID": "A005",
+      "ApplicationName": "Financial System",
+      "Description": "Financial management and reporting",
+      "AssociatedUsers": ["U006", "U012", "U018", "U023", "U029", "U030"]
+    }
+  ],
+
+  "Groups": [
+    {
+      "GroupID": "G001",
+      "GroupName": "Engineering Team",
+      "Description": "Group for all engineering staff",
+      "AssociatedUsers": ["U001", "U004", "U007", "U010", "U013", "U016", "U019", "U021", "U027"]
+    },
+    {
+      "GroupID": "G002",
+      "GroupName": "Sales Team",
+      "Description": "Group for sales department",
+      "AssociatedUsers": ["U002", "U008", "U014", "U020", "U026"]
+    },
+    {
+      "GroupID": "G003",
+      "GroupName": "Marketing Team",
+      "Description": "Group for marketing department",
+      "AssociatedUsers": ["U005", "U011", "U017", "U025"]
+    },
+    {
+      "GroupID": "G004",
+      "GroupName": "IT Team",
+      "Description": "Group for IT department",
+      "AssociatedUsers": ["U022", "U028"]
+    },
+    {
+      "GroupID": "G005",
+      "GroupName": "HR Team",
+      "Description": "Group for HR department",
+      "AssociatedUsers": ["U003", "U009", "U015", "U024", "U030"]
+    }
+  ],
+
+  "Resources": [
+    {
+      "ResourceID": "RES001",
+      "ResourceName": "Internal Database",
+      "Description": "Contains sensitive company data",
+      "AssociatedRoles": ["R001"],
+      "AccessPolicies": ["Admin-only"]
+    },
+    {
+      "ResourceID": "RES002",
+      "ResourceName": "Marketing Drive",
+      "Description": "Shared drive for marketing materials",
+      "AssociatedRoles": ["R002", "R003"],
+      "AccessPolicies": ["Read-only", "Editor-access"]
+    },
+    {
+      "ResourceID": "RES003",
+      "ResourceName": "Development Server",
+      "Description": "Development environment server",
+      "AssociatedRoles": ["R003"],
+      "AccessPolicies": ["Developer-access"]
+    },
+    {
+      "ResourceID": "RES004",
+      "ResourceName": "HR Documents",
+      "Description": "Confidential HR documentation",
+      "AssociatedRoles": ["R001", "R004"],
+      "AccessPolicies": ["Restricted-access"]
+    },
+    {
+      "ResourceID": "RES005",
+      "ResourceName": "Financial Reports",
+      "Description": "Company financial reports and statements",
+      "AssociatedRoles": ["R005"],
+      "AccessPolicies": ["Finance-only"]
+    }
+  ]
+}
