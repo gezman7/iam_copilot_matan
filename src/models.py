@@ -4,6 +4,7 @@ class RiskTopic(Enum):
     """Enum representing different IAM risk topics for users."""
     
     WEAK_MFA_USERS = "WEAK_MFA_USERS"  # Users with MFA methods that are considered weak or less secure
+    NO_MFA_USERS = "NO_MFA_USERS"  # Users with no MFA enabled
     INACTIVE_USERS = "INACTIVE_USERS"  # Users who have not logged in for a significant period
     NEVER_LOGGED_IN_USERS = "NEVER_LOGGED_IN_USERS"  # Users who have never logged into the system after being provisioned
     PARTIALLY_OFFBOARDED_USERS = "PARTIALLY_OFFBOARDED_USERS"  # Users who have not been completely removed from all systems post-offboarding

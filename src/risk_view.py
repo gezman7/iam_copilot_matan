@@ -3,8 +3,8 @@ import sqlite3
 import json
 import logging
 from typing import Dict, Any, List
-from iam_data_snapshot import IAMDataSnapshot
-from .risk_topics import RiskTopic
+from snapshot import IAMDataSnapshot
+from models import RiskTopic
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -216,7 +216,7 @@ def process_users_with_risks(cursor: sqlite3.Cursor, snapshot: IAMDataSnapshot) 
     # Collect all risks for each user
     for risk_topic in RiskTopic:
         risky_users = snapshot.detect_risk(risk_topic)
-        logger.info(f"Found {len(risky_users)} users with risk type {risk_topic.name}")
+        logger.info(f"Found {len(risky_users)} users with risk topic {risk_topic.name}")
         
         for user in risky_users:
             user_id = user['UserID']
@@ -227,14 +227,14 @@ def process_users_with_risks(cursor: sqlite3.Cursor, snapshot: IAMDataSnapshot) 
     # Risk priority order (highest to lowest)
     # This determines which risk is assigned when a user has multiple risks
     risk_priority = [
-        RiskTopic.WEAK_MFA,           # Security risk: Weak authentication
-        RiskTopic.INACTIVE_USER,      # Access risk: Inactive user still has access
-        RiskTopic.OFFBOARDED_USER,    # Access risk: Offboarded user still in system
-        RiskTopic.STALE_ACCOUNT,      # Access risk: User hasn't logged in recently
-        RiskTopic.SERVICE_ACCOUNT,    # Management risk: Service account needs review
-        RiskTopic.LOCAL_ACCOUNT,      # Management risk: Local account needs review
-        RiskTopic.NEW_ACCOUNT,        # Monitoring: New account to monitor
-        RiskTopic.ADMIN_ROLE          # Privilege: User has admin privileges
+        RiskTopic.WEAK_MFA_USERS,           # Security risk: Weak authentication
+        RiskTopic.NO_MFA_USERS,             # Security risk: No authentication
+        RiskTopic.INACTIVE_USERS,           # Access risk: Inactive user still has access
+        RiskTopic.PARTIALLY_OFFBOARDED_USERS, # Access risk: Offboarded user still in system
+        RiskTopic.NEVER_LOGGED_IN_USERS,    # Access risk: User hasn't logged in recently
+        RiskTopic.SERVICE_ACCOUNTS,         # Management risk: Service account needs review
+        RiskTopic.LOCAL_ACCOUNTS,           # Management risk: Local account needs review
+        RiskTopic.RECENTLY_JOINED_USERS     # Monitoring: New account to monitor
     ]
     
     # Now assign the highest priority risk to each user and insert
@@ -251,7 +251,7 @@ def process_users_with_risks(cursor: sqlite3.Cursor, snapshot: IAMDataSnapshot) 
             # No risks for this user
             insert_user_without_risk(cursor, user)
     
-    # Verify we have users with each risk type
+    # Verify we have users with each risk topic
     for risk_topic in RiskTopic:
         cursor.execute("SELECT COUNT(*) FROM Users WHERE risk_topic = ?", (risk_topic.value,))
         count = cursor.fetchone()[0]

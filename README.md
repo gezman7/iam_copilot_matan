@@ -149,4 +149,117 @@ python3 test_streaming.py
 
 # Run comprehensive streaming test with fallbacks
 python3 test_comprehensive.py
-``` 
+```
+
+# IAM Query Writer Testing System
+
+This system provides a robust way to test the IAM Query Writer's ability to translate natural language queries into SQL statements for Identity and Access Management (IAM) risk analysis.
+
+## Overview
+
+The QueryWriter system has been enhanced with multi-step verification techniques from LangGraph SQL agent architecture:
+
+1. Initial SQL generation from natural language query
+2. SQL validation for potential errors
+3. Test execution to catch runtime issues
+4. Error handling and correction
+
+## Test Framework
+
+The testing framework provides:
+
+- Unit tests for specific components
+- Integration tests for end-to-end functionality
+- A test data file with various IAM risk scenarios
+- Result comparison between expected and actual outputs
+- Detailed reporting in multiple formats
+
+## Running Tests
+
+### Unit Tests
+
+To run the unit tests for the QueryWriter:
+
+```bash
+python -m unittest src/test_query_writer.py
+```
+
+### Integration Tests
+
+To run the integration tests with the test cases:
+
+```bash
+python src/test_runner.py
+```
+
+#### Command Line Options
+
+- `--test-data PATH`: Path to the test data JSON file (default: test_data/test_cases.json)
+- `--verbose`: Enable verbose output
+- `--format {text,csv,json,html}`: Output format for the test report (default: text)
+- `--output PATH`: Output file path (without extension) for reports
+
+Example:
+
+```bash
+python src/test_runner.py --verbose --format html --output reports/test_results
+```
+
+## Adding New Test Cases
+
+You can add new test cases to the `test_data/test_cases.json` file. Each test case should include:
+
+- `id`: Unique identifier for the test
+- `description`: Brief description of what the test is checking
+- `user_query`: The natural language query
+- `expected_sql`: The expected SQL output
+- `expected_result`: Expected database query results
+
+## Test Case Example
+
+```json
+{
+  "id": "test_no_mfa",
+  "description": "Basic query for users without MFA",
+  "user_query": "Show me all users without MFA",
+  "expected_sql": "SELECT UserID, Name, Email, Department FROM Users WHERE risk_topic = 'NO_MFA_USERS'",
+  "expected_result": [...]
+}
+```
+
+## Enhanced QueryWriter Features
+
+The updated QueryWriter includes several features inspired by the LangGraph SQL agent:
+
+1. **Multi-step verification process**:
+   - Initial SQL generation
+   - SQL validation to check for errors
+   - Execution testing to catch runtime issues
+
+2. **SQL query validation**:
+   - Checks for syntax errors
+   - Ensures required risk_topic filters are present
+   - Verifies table and column names
+   - Reviews join logic
+   - Checks GROUP BY clauses for aggregate functions
+   - Evaluates query efficiency
+
+3. **Error handling**:
+   - Catches runtime errors when executing queries
+   - Uses error messages to guide query correction
+   - Provides specific error context to the LLM
+
+4. **Query testing**:
+   - Tests queries with LIMIT 1 to validate syntax without retrieving large results
+   - Preserves existing LIMIT clauses when present
+
+## Requirements
+
+- Python 3.8+
+- Required packages:
+  - langchain_ollama
+  - langchain_core
+  - langchain_community
+  - pandas
+  - tabulate
+  - sqlite3 

@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.messages.tool import ToolMessage
 from langchain_core.tools import tool
 from langchain_core.messages.utils import trim_messages
+from langchain_ollama import ChatOllama
 
 # LangGraph imports
 from langgraph.prebuilt import ToolNode
@@ -16,8 +17,9 @@ from langgraph.checkpoint.memory import MemorySaver
 
 # Database utils
 from langchain_community.utilities import SQLDatabase
+from src.guidelines import GUIDELINES
 
-from src.risk_topics import RiskTopic
+from .models import RiskTopic
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +33,7 @@ class IAMCopilot:
         
         # Set up default llm if not provided
         if llm is None:
-            from langchain_ollama import ChatOllama
+            
             self.llm = ChatOllama(model="llama3.2-ctx4000", num_ctx=4000)
         else:
             self.llm = llm
@@ -42,16 +44,7 @@ class IAMCopilot:
         # Get valid risk topics from enum
         self.valid_risk_types = [topic.value for topic in RiskTopic]
         
-        # Load guidelines for risk types
-        self.risk_guidelines = {
-            "INACTIVE_USERS": "Inactive accounts should be disabled after 90 days of inactivity and deleted after 180 days.",
-            "WEAK_MFA_USERS": "All user accounts should have strong MFA enabled. Hardware tokens or authenticator apps are preferred over SMS or email.",
-            "SERVICE_ACCOUNTS": "Service accounts should not have interactive login capabilities and credentials should be rotated regularly.",
-            "LOCAL_ACCOUNTS": "Local accounts should be minimized and carefully monitored as they bypass centralized identity management.",
-            "NEVER_LOGGED_IN_USERS": "Accounts that have never been accessed should be reviewed and potentially removed.",
-            "RECENTLY_JOINED_USERS": "New user accounts should be carefully monitored for unusual activity during their first 30 days.",
-            "PARTIALLY_OFFBOARDED_USERS": "Partially offboarded users still have access to some systems and should be fully offboarded."
-        }
+       
         
         # Initialize memory saver for conversation persistence
         self.memory = MemorySaver()
@@ -60,7 +53,6 @@ class IAMCopilot:
         self.agent = self._create_agent()
     
     def _create_agent(self):
-        """Create a LangGraph-based SQL agent with a fully linear flow"""
         
         # Define tools
         @tool
@@ -133,75 +125,6 @@ class IAMCopilot:
                 return f"SQL Error: {str(e)}"
         
         @tool
-        def get_security_recommendations(risk_type: str) -> str:
-            """
-            Get security recommendations for a specific risk type.
-            
-            Args:
-                risk_type: The type of risk to get recommendations for
-            """
-            if risk_type in self.risk_guidelines:
-                guideline = self.risk_guidelines[risk_type]
-                recommendations = {
-                    "INACTIVE_USERS": """
-1. Implement an automated account disablement policy
-2. Set up regular account audits (at least quarterly)
-3. Create alerting for accounts that approach inactivity thresholds
-4. Develop a formal offboarding process
-5. Maintain documentation of exceptions with business justification
-                    """,
-                    "WEAK_MFA_USERS": """
-1. Enforce hardware-based or app-based MFA for all users
-2. Gradually phase out SMS and email-based MFA
-3. Implement conditional access policies that require stronger MFA for sensitive applications
-4. Conduct regular user training on the importance of strong MFA
-5. Set up monitoring to detect and alert on MFA method changes
-                    """,
-                    "SERVICE_ACCOUNTS": """
-1. Implement automated credential rotation
-2. Use a privileged access management solution
-3. Apply the principle of least privilege
-4. Set up alerting for any interactive login attempts
-5. Regularly audit service account permissions
-                    """,
-                    "LOCAL_ACCOUNTS": """
-1. Minimize local accounts where possible
-2. Apply strong password policies
-3. Implement regular local account audits
-4. Set up monitoring for local account creation and modification
-5. Document business justifications for all local accounts
-                    """,
-                    "NEVER_LOGGED_IN_USERS": """
-1. Implement automated deprovisioning for accounts not used within 30 days of creation
-2. Review provisioning workflows to avoid creating unnecessary accounts
-3. Set up alerting for new accounts that remain unused
-4. Include account cleanup in regular access reviews
-5. Document exceptions with business justification
-                    """,
-                    "RECENTLY_JOINED_USERS": """
-1. Implement enhanced monitoring for new user accounts
-2. Provide targeted security awareness training
-3. Apply more restrictive permissions initially
-4. Conduct early access reviews (within first 30 days)
-5. Set up buddy systems or mentoring for security practices
-                    """,
-                    "PARTIALLY_OFFBOARDED_USERS": """
-1. Implement comprehensive offboarding checklists
-2. Conduct regular audits of offboarded users
-3. Use automated offboarding workflows
-4. Assign accountability for completion of offboarding
-5. Set up monitoring to detect access from supposedly offboarded accounts
-                    """
-                }
-                
-                if risk_type in recommendations:
-                    return f"Guideline: {guideline}\n\nRecommendations:\n{recommendations[risk_type]}"
-                else:
-                    return f"Guideline: {guideline}"
-            
-            return "No specific recommendations available for this risk type."
-        
-        @tool
         def generate_final_answer(query_results: str, risk_type: str = None) -> str:
             """
             Generate a final answer based on query results and risk type.
@@ -211,15 +134,15 @@ class IAMCopilot:
                 risk_type: The risk type being analyzed (optional)
             """
             # If risk_type is provided, add the corresponding guideline
-            if risk_type and risk_type in self.risk_guidelines:
-                guideline = self.risk_guidelines[risk_type]
+            if risk_type and risk_type in GUIDELINES:
+                guideline = GUIDELINES[risk_type]
                 if "Guideline:" not in query_results:
                     return f"{query_results}\n\nGuideline: {guideline}"
             
             return query_results
         
         # Create tools list
-        tools = [list_tables_tool, get_schema_tool, analyze_query, db_query_tool, get_security_recommendations, generate_final_answer]
+        tools = [list_tables_tool, get_schema_tool, analyze_query, db_query_tool, generate_final_answer]
         
         # System prompt focused on SQL analysis for IAM risks
         system_prompt = """You are an IAM security analyst specializing in SQL analysis of identity risks.
@@ -231,27 +154,13 @@ User will ask questions about IAM security risks in the database. Your job is to
 3. Craft an appropriate SQL query to answer the question
 4. Analyze your SQL query using analyze_query to check for common issues:
    - Ensure queries filtering risk data include WHERE clause with risk_type
-   - Check for SQL injection patterns
-   - Validate proper JOIN conditions
-   - Verify appropriate filtering
-5. Execute the query with db_query_tool
+   Execute the query with db_query_tool
 6. Generate a final answer with generate_final_answer including:
    - A clear explanation of the results
    - Any security implications
    - The specific risk type if identified from: INACTIVE_USERS, WEAK_MFA_USERS, 
      SERVICE_ACCOUNTS, LOCAL_ACCOUNTS, NEVER_LOGGED_IN_USERS, RECENTLY_JOINED_USERS, 
      PARTIALLY_OFFBOARDED_USERS
-
-If the user asks for security recommendations or best practices for a specific risk type, use the get_security_recommendations tool with the appropriate risk type.
-
-If the user asks a follow-up question, take into account the previous conversation context to provide a coherent response. For example, if they previously asked about WEAK_MFA_USERS and then ask "What are the security recommendations for these users?", you should use get_security_recommendations with "WEAK_MFA_USERS" as the risk type.
-
-IMPORTANT SQL GUIDELINES:
-- Always filter risk tables by risk_type
-- Always use parameterized queries when possible
-- Avoid unnecessary SELECT *
-- Include appropriate LIMIT clauses
-- Always include proper JOIN conditions
 
 Provide your answer in a clear, structured format with analysis of the security implications.
 """
@@ -324,6 +233,7 @@ Provide your answer in a clear, structured format with analysis of the security 
         
         # Add edges - simple linear path between agent and tools
         workflow.add_edge("agent", "tools")
+        workflow.add_edge("tools", "agent")
         
         # Add conditional edge to end when final answer is generated
         workflow.add_conditional_edges(
@@ -340,6 +250,78 @@ Provide your answer in a clear, structured format with analysis of the security 
         
         # Compile graph with memory checkpointer for conversation persistence
         return workflow.compile(checkpointer=self.memory)
+    
+    def process_query(self, question: str, thread_id: str = "default") -> Dict[str, Any]:
+        """
+        Process a natural language query about IAM risks and return the answer.
+        
+        Unlike stream methods, this returns the complete response at once.
+        
+        Args:
+            question: The natural language query to process
+            thread_id: Unique ID for the conversation thread (for persistence)
+            
+        Returns:
+            Dict containing the response and metadata
+        """
+        try:
+            # Format the user query
+            input_message = HumanMessage(content=question)
+            
+            # Set up configuration with thread_id for conversation persistence
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Invoke the agent with thread_id config for conversation persistence
+            result = self.agent.invoke({"messages": [input_message]}, config)
+            
+            # Extract messages
+            messages = result.get("messages", [])
+            
+            if not messages:
+                return {
+                    "success": False,
+                    "response": "No response was generated."
+                }
+            
+            # Find the final answer from the last AI message
+            final_answer = None
+            tool_calls = []
+            tool_results = []
+            
+            for msg in messages:
+                if isinstance(msg, AIMessage):
+                    final_answer = msg.content
+                    # Collect tool calls if available
+                    if hasattr(msg, "tool_calls"):
+                        tool_calls.extend([{
+                            "name": tc.get("name"),
+                            "args": tc.get("args")
+                        } for tc in msg.tool_calls])
+                elif isinstance(msg, ToolMessage):
+                    tool_results.append(msg.content)
+            
+            # If no final answer was found, use the last message content
+            if not final_answer and messages:
+                last_message = messages[-1]
+                final_answer = last_message.content if hasattr(last_message, "content") else str(last_message)
+            
+            return {
+                "success": True,
+                "response": final_answer,
+                "thread_id": thread_id,
+                "tool_calls": tool_calls,
+                "tool_results": tool_results,
+                "message_count": len(messages)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing query: {e}")
+            return {
+                "success": False,
+                "response": f"I encountered an error processing your query: {str(e)}",
+                "error_type": "processing_error",
+                "error": str(e)
+            }
     
     def process_speech_query(self, question: str, thread_id: str = "default") -> Dict[str, Any]:
         """Process a natural language query about IAM risks"""

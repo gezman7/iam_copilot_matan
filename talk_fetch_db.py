@@ -1,6 +1,5 @@
 import logging
 import json
-import os
 import sqlite3
 import re
 from datetime import datetime
