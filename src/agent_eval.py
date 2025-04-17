@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
-from typing import Annotated, Literal, Any, Dict, List, Optional, Tuple, Union
+from typing import Annotated, Any, Dict, List, Optional
 from typing_extensions import TypedDict
-import tiktoken
-import re
 from enum import Enum
 import traceback
+import sys
+import os
+
+# Add the root directory to the path to make imports work
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
@@ -19,22 +22,23 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
 from pydantic import BaseModel, Field
 
+# Import QueryGraph
+from src.query_graph import QueryGraph
+
 # Import prompts from prompt.py
-from prompt import query_check_system, query_gen_system, schema_system_prompt
+
+# Import debug utilities
+from debug import debug_state
 
 # --- Constants ---
 class ToolIds(str, Enum):
     DB_METADATA = "db_metadata_id"
-    EXECUTE_QUERY = "execute_query_id"
-    CHECK_QUERY = "checked_query_id"
     FINAL_ANSWER = "final_answer_id"
 
 class NodeNames(str, Enum):
     GET_DB_METADATA = "get_db_metadata"
     DB_METADATA_TOOL = "db_metadata_tool"
-    QUERY_GEN = "query_gen"
-    CHECK_QUERY = "check_query"
-    EXECUTE_QUERY = "execute_query"
+    QUERY_PROCESSOR = "query_processor"
 
 # --- State Definition ---
 class IAMAgentState(TypedDict):
@@ -59,49 +63,6 @@ class IAMAgentState(TypedDict):
 # --- Debug utilities ---
 DEBUG_ENABLED = True  # Set to False in production
 
-def debug_state(state_dict: IAMAgentState, node_name=None) -> IAMAgentState:
-    """Debug function to print state information. No-op if debugging disabled."""
-    if not DEBUG_ENABLED:
-        return state_dict
-        
-    print(f"\n==== DEBUG STATE {'for ' + node_name if node_name else ''} ====")
-    
-    # Count tokens for all messages
-    total_tokens = 0
-    if "messages" in state_dict:
-        encoder = tiktoken.get_encoding("cl100k_base")  # Using OpenAI's encoding
-        
-        print(f"Number of messages: {len(state_dict['messages'])}")
-        for i, msg in enumerate(state_dict["messages"]):
-            msg_type = type(msg).__name__
-            content = getattr(msg, "content", "No content")
-            tool_calls = getattr(msg, "tool_calls", None)
-            tool_call_id = getattr(msg, "tool_call_id", None)
-            
-            # Count tokens in this message
-            message_tokens = len(encoder.encode(str(content)))
-            total_tokens += message_tokens
-            
-            print(f"  Message {i} ({msg_type}): {message_tokens} tokens")
-            if content and content.strip():
-                print(f"    Content: {content}")
-            if tool_calls:
-                print(f"    Tool calls: {tool_calls}")
-                # Add tokens for tool calls
-                tool_calls_text = str(tool_calls)
-                tool_tokens = len(encoder.encode(tool_calls_text))
-                total_tokens += tool_tokens
-            if tool_call_id:
-                print(f"    Tool call ID: {tool_call_id}")
-    
-    print(f"Total tokens in state: {total_tokens}")
-    
-    if "error" in state_dict:
-        print(f"Error: {state_dict.get('error')}")
-    
-    print("================================")
-    return state_dict
-
 # --- Database Setup ---
 db = SQLDatabase.from_uri("sqlite:///risk_views.db")
 
@@ -112,45 +73,6 @@ def extract_user_question(state: IAMAgentState) -> str:
         if isinstance(msg, HumanMessage):
             return msg.content
     return ""
-
-def extract_query_from_state(state: IAMAgentState) -> Tuple[str, str]:
-    """Extract query and tool_call_id from state or messages."""
-    # Check if query is already in state
-    query = state.get("current_query", "")
-    tool_call_id = ""
-    
-    # If no query in state, find it in the messages
-    if not query:
-        for msg in reversed(state["messages"]):
-            if hasattr(msg, "tool_calls"):
-                for tc in msg.tool_calls:
-                    if tc.get("name") == "sql_db_query":
-                        query = tc.get("args", {}).get("query", "")
-                        tool_call_id = tc.get("id", "")
-                        break
-                if query:
-                    break
-    
-    return query, tool_call_id
-
-def extract_query_results(state: IAMAgentState) -> Tuple[bool, str]:
-    """Extract query results from state messages."""
-    has_results = False
-    query_result = state.get("query_result", "")
-    
-    for msg in reversed(state["messages"]):
-        if (isinstance(msg, ToolMessage) and 
-            msg.tool_call_id == ToolIds.EXECUTE_QUERY and 
-            not msg.content.startswith("Error:")):
-            has_results = True
-            query_result = msg.content
-            break
-    
-    return has_results, query_result
-
-def has_db_metadata(state: IAMAgentState) -> bool:
-    """Check if state has database metadata information."""
-    return state.get("db_metadata") is not None
 
 def is_final_answer(state: IAMAgentState) -> bool:
     """Check if state has a final answer."""
@@ -180,30 +102,6 @@ def is_plaintext_response(state: IAMAgentState) -> bool:
             hasattr(last, "content") and 
             last.content.strip() and 
             not (hasattr(last, "tool_calls") and last.tool_calls))
-
-def has_db_error(state: IAMAgentState) -> bool:
-    """Check if the last message indicates a database error."""
-    messages = state["messages"]
-    if not messages:
-        return False
-        
-    last = messages[-1]
-    return isinstance(last, ToolMessage) and last.content.startswith("Error:")
-
-def has_sql_query(state: IAMAgentState) -> bool:
-    """Check if state contains an SQL query."""
-    # Check if current_query exists in state
-    if state.get("current_query", ""):
-        return True
-        
-    # Check if the last message has a sql_db_query call
-    messages = state["messages"]
-    if not messages:
-        return False
-        
-    last = messages[-1]
-    return (hasattr(last, "tool_calls") and 
-            any(tc.get("name") == "sql_db_query" for tc in last.tool_calls))
 
 # --- Utility Functions ---
 def handle_tool_error(state: IAMAgentState) -> Dict[str, List[ToolMessage]]:
@@ -237,19 +135,6 @@ def create_tool_call_message(tool_name: str, args: Dict[str, Any], tool_id: str)
             "id": tool_id
         }]
     )
-
-def extract_sql_from_llm_response(response_text: str, original_query: str) -> str:
-    """Extract SQL query from LLM response or fallback to original query."""
-    sql_pattern = re.compile(r'SELECT\s+.*?(?=;|\Z)', re.IGNORECASE | re.DOTALL)
-    sql_matches = sql_pattern.findall(response_text)
-    
-    if sql_matches:
-        # Use the last (most likely corrected) SQL query found
-        return sql_matches[-1].strip()
-    else:
-        # Fallback: Use the original query
-        print("Warning: Could not extract SQL query from LLM response. Using original query.")
-        return original_query
 
 # --- Custom Tool for DB Metadata ---
 @tool
@@ -293,262 +178,126 @@ def get_db_metadata_node(state: IAMAgentState) -> Dict[str, Any]:
     }
     return debug_state(result, NodeNames.GET_DB_METADATA)
 
-# --- Query Generation ---
-query_gen_prompt = ChatPromptTemplate.from_messages([
-    ("system", query_gen_system),
-    ("placeholder", "{messages}"),
-])
-
-query_gen = (
-    query_gen_prompt
-    | ChatOllama(model="llama3.2-ctx4000", num_ctx=4000)
-)
-
-def generate_sql_query(state: IAMAgentState) -> Dict[str, Any]:
-    """Generate a SQL query based on database metadata."""
-    try:
-        # Use the model to generate the query
-        response = query_gen.invoke(state)
-        
-        # Extract and process query from response
-        query = response.content.strip()
-        if "SELECT" in query:
-            # Found a SQL query, create a tool call
-            result = {
-                "messages": [create_tool_call_message(
-                    "sql_db_query", 
-                    {"query": query}, 
-                    ToolIds.EXECUTE_QUERY
-                )],
-                "current_query": query,
-                "last_tool_call_id": ToolIds.EXECUTE_QUERY,
-                "has_final_answer": False
-            }
-            return result
-        
-        return {"messages": [response]}
-        
-    except Exception as e:
-        print(f"Error generating SQL query: {e}")
-        return {"error": str(e)}
-
-def generate_final_answer(state: IAMAgentState, query_result: str) -> Dict[str, Any]:
-    """Generate a final answer based on query results."""
-    try:
-        # Generate a final answer using the model
-        llm = ChatOllama(model="llama3.2-ctx4000", num_ctx=4000)
-        llm_with_tools = llm.bind_tools([SubmitFinalAnswer], tool_choice="required")
-        
-        response = llm_with_tools.invoke(
-            query_gen_prompt.format(messages=state["messages"])
-        )
-        
-        result = {
-            "messages": [response],
-            "query_result": query_result
-        }
-        
-        # Check if it's a tool call or text response
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            result["has_final_answer"] = any(
-                tc.get("name") == "SubmitFinalAnswer" for tc in response.tool_calls
-            )
-        else:
-            # Convert text response to a tool call
-            result["messages"] = [create_tool_call_message(
-                "SubmitFinalAnswer", 
-                {"final_answer": response.content}, 
-                ToolIds.FINAL_ANSWER
-            )]
-            result["has_final_answer"] = True
-        
-        return result
-    
-    except Exception as e:
-        print(f"Error generating final answer: {e}")
-        return {"error": str(e)}
-
-def handle_llm_response(state: IAMAgentState, response: AIMessage) -> Dict[str, Any]:
-    """Process and handle general LLM responses."""
-    result = {}
-    
-    # Handle plain text with SQL pattern (convert to tool call)
-    content = response.content.strip()
-    if "SELECT" in content and not (hasattr(response, "tool_calls") and response.tool_calls):
-        result["messages"] = [create_tool_call_message(
-            "sql_db_query", 
-            {"query": content}, 
-            ToolIds.EXECUTE_QUERY
-        )]
-        result["current_query"] = content
-        result["last_tool_call_id"] = ToolIds.EXECUTE_QUERY
-        result["has_final_answer"] = False
-        return result
-    
-    # Handle normal response with tool calls
-    if hasattr(response, "tool_calls") and response.tool_calls:
-        result["messages"] = [response]
-        
-        # Check for final answer or db query tools
-        result["has_final_answer"] = any(
-            tc.get("name") == "SubmitFinalAnswer" for tc in response.tool_calls
-        )
-        
-        for tc in response.tool_calls:
-            if tc.get("name") == "sql_db_query":
-                result["current_query"] = tc.get("args", {}).get("query", "")
-                result["last_tool_call_id"] = tc.get("id", "")
-                result["has_final_answer"] = False
-                break
-    else:
-        # Convert text to final answer
-        result["messages"] = [create_tool_call_message(
-            "SubmitFinalAnswer", 
-            {"final_answer": response.content}, 
-            ToolIds.FINAL_ANSWER
-        )]
-        result["has_final_answer"] = True
-    
-    return result
-
-def query_gen_node(state: IAMAgentState) -> Dict[str, Any]:
-    """Generate SQL query, final answer, or handle model response."""
-    print("\nRunning query_gen_node...")
-    try:
-        # Store DB metadata if it exists in messages but not state
-        for msg in state["messages"]:
-            if isinstance(msg, ToolMessage) and msg.tool_call_id == ToolIds.DB_METADATA:
-                state["db_metadata"] = msg.content
-                break
-        
-        # Check if we have DB metadata and query results
-        has_metadata = has_db_metadata(state)
-        has_results, query_result = extract_query_results(state)
-        
-        result = {}
-        
-        # Decision logic
-        if has_metadata and not has_results:
-            # Generate a SQL query
-            query_result = generate_sql_query(state)
-            result.update(query_result)
-            return debug_state(result, f"{NodeNames.QUERY_GEN} - SQL generated")
-        
-        elif has_results:
-            # Generate a final answer
-            answer_result = generate_final_answer(state, query_result)
-            result.update(answer_result)
-            return debug_state(result, f"{NodeNames.QUERY_GEN} - final answer")
-        
-        else:
-            # Default case - process model output
-            response = query_gen.invoke(state)
-            response_result = handle_llm_response(state, response)
-            result.update(response_result)
-            return debug_state(result, f"{NodeNames.QUERY_GEN} - default")
-            
-    except Exception as e:
-        print(f"Error in query_gen_node: {e}")
-        traceback.print_exc()
-        return debug_state({"error": str(e)}, f"{NodeNames.QUERY_GEN} - error")
-
-# --- Query Checking ---
-query_check_prompt = ChatPromptTemplate.from_messages([
-    ("system", query_check_system),
-    ("human", "{query}"),
-])
-
-query_check = query_check_prompt | ChatOllama(model="llama3.2-ctx4000", num_ctx=4000)
-
-def check_query_node(state: IAMAgentState) -> Dict[str, Any]:
-    """Check and validate SQL queries before execution."""
-    print("\nRunning check_query_node...")
-    
-    # Get the current query
-    query, _ = extract_query_from_state(state)
-    
-    if not query:
-        # No query to check, pass through
-        return {"messages": state["messages"][-1:]}
-    
-    try:
-        # Use the SQL checker to validate the query
-        check_result = query_check.invoke({"query": query})
-        
-        # Extract query from LLM response
-        llm_response = check_result.content
-        checked_query = extract_sql_from_llm_response(llm_response, query)
-        
-        print(f"Original query: {query}")
-        print(f"Extracted checked query: {checked_query}")
-        
-        # Create a new tool call with the checked query
-        result = {
-            "messages": [create_tool_call_message(
-                "sql_db_query", 
-                {"query": checked_query}, 
-                ToolIds.CHECK_QUERY
-            )],
-            "current_query": checked_query,
-            "last_tool_call_id": ToolIds.CHECK_QUERY
-        }
-        return debug_state(result, NodeNames.CHECK_QUERY)
-    except Exception as e:
-        print(f"Error in check_query_node: {e}")
-        traceback.print_exc()
-        return debug_state({"error": str(e)}, f"{NodeNames.CHECK_QUERY} - error")
-
 # --- Final Answer ---
 class SubmitFinalAnswer(BaseModel):
     final_answer: str = Field(..., description="The final answer to the user")
 
+# --- Query Processor Node ---
+def query_processor_node(state: IAMAgentState) -> Dict[str, Any]:
+    """Process user query using the QueryGraph."""
+    print("\nRunning query_processor_node...")
+    
+    try:
+        # Extract user question
+        user_question = extract_user_question(state)
+        if not user_question:
+            return debug_state({"error": "No user question found"}, NodeNames.QUERY_PROCESSOR)
+        
+        # Extract DB metadata
+        db_metadata = state.get("db_metadata", "")
+        if not db_metadata:
+            # Try to extract from messages
+            for msg in state["messages"]:
+                if isinstance(msg, ToolMessage) and msg.tool_call_id == ToolIds.DB_METADATA:
+                    db_metadata = msg.content
+                    state["db_metadata"] = db_metadata
+                    break
+        
+        if not db_metadata:
+            return debug_state({"error": "No database metadata found"}, NodeNames.QUERY_PROCESSOR)
+        
+        # Create and execute QueryGraph
+        query_graph = QueryGraph(db=db, debug=DEBUG_ENABLED)
+        result = query_graph.execute(user_question, db_metadata, state["messages"])
+        
+        # Process result
+        if result.get("is_complete") and result.get("query_result"):
+            # Query was successful, generate final answer
+            llm = ChatOllama(model="llama3.2-ctx4000", num_ctx=4000)
+            llm_with_tools = llm.bind_tools([SubmitFinalAnswer], tool_choice="required")
+            
+            # Create prompt for final answer
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """You are a helpful SQL assistant. Given the query results, 
+                provide a clear final answer to the user's question."""),
+                ("human", f"""
+User question: {{user_question}}
+Query result: {{query_result}}
+
+Generate a clear and concise final answer.
+""")
+            ])
+            
+            # Generate final answer - properly format the prompt first
+            response = llm_with_tools.invoke(
+                prompt.format(
+                    user_question=user_question,
+                    query_result=result['query_result']
+                )
+            )
+            
+            return debug_state({
+                "messages": [response],
+                "current_query": result.get("current_query"),
+                "query_result": result.get("query_result"),
+                "has_final_answer": True
+            }, f"{NodeNames.QUERY_PROCESSOR} - final answer")
+        elif result.get("error"):
+            # Query execution had an error
+            return debug_state({
+                "error": result.get("error"),
+                "messages": [AIMessage(content=f"Error: {result.get('error')}")]
+            }, f"{NodeNames.QUERY_PROCESSOR} - error")
+        else:
+            # Unexpected state
+            return debug_state({
+                "error": "Unknown error in query processing",
+                "messages": [AIMessage(content="Sorry, I encountered an error processing your query.")]
+            }, f"{NodeNames.QUERY_PROCESSOR} - unknown")
+            
+    except Exception as e:
+        print(f"Error in query_processor_node: {e}")
+        traceback.print_exc()
+        return debug_state({
+            "error": str(e),
+            "messages": [AIMessage(content=f"An error occurred: {str(e)}")]
+        }, f"{NodeNames.QUERY_PROCESSOR} - exception")
+
 # --- Routing Logic ---
-def determine_next_step(state: IAMAgentState) -> Literal[END, str]:
+def determine_next_step(state: IAMAgentState) -> str:
     """Unified routing logic for the workflow."""
     # Check for termination conditions
     if is_final_answer(state) or is_plaintext_response(state):
         print("\nFinal answer or text response detected - ending conversation")
-        return END
+        return "end"
     
-    # Check for SQL queries that need validation
-    if has_sql_query(state):
-        print("\nSQL query detected - routing to check_query")
-        return NodeNames.CHECK_QUERY
-    
-    # Check for database errors
-    if has_db_error(state):
-        print("\nError detected - routing back to query_gen")
-        return NodeNames.QUERY_GEN
+    # Check for errors (return END to prevent loops)
+    if state.get("error"):
+        print("\nError detected - ending conversation")
+        return "end"
     
     # Default case - we're done
     print("\nNo special conditions - ending conversation")
-    return END
+    return "end"
 
 # --- Workflow Definition ---
 workflow = StateGraph(IAMAgentState)
 
 # Add all nodes
-workflow.add_node("get_db_metadata", get_db_metadata_node)
-workflow.add_node("db_metadata_tool", create_tool_node_with_fallback([get_db_metadata_tool]))
-workflow.add_node("query_gen", query_gen_node)
-workflow.add_node("check_query", check_query_node)
-workflow.add_node("execute_query", create_tool_node_with_fallback([db_query_tool]))
+workflow.add_node(NodeNames.GET_DB_METADATA, get_db_metadata_node)
+workflow.add_node(NodeNames.DB_METADATA_TOOL, create_tool_node_with_fallback([get_db_metadata_tool]))
+workflow.add_node(NodeNames.QUERY_PROCESSOR, query_processor_node)
 
 # Define the workflow edges - simplified
-workflow.add_edge(START, "get_db_metadata")
-workflow.add_edge("get_db_metadata", "db_metadata_tool")
-workflow.add_edge("db_metadata_tool", "query_gen")
+workflow.add_edge(START, NodeNames.GET_DB_METADATA)
+workflow.add_edge(NodeNames.GET_DB_METADATA, NodeNames.DB_METADATA_TOOL)
+workflow.add_edge(NodeNames.DB_METADATA_TOOL, NodeNames.QUERY_PROCESSOR)
 workflow.add_conditional_edges(
-    "query_gen", 
-    lambda state: END if is_final_answer(state) or is_plaintext_response(state) 
-    else "check_query" if has_sql_query(state)
-    else "query_gen" if has_db_error(state)
-    else END
-)
-workflow.add_edge("check_query", "execute_query")
-workflow.add_conditional_edges(
-    "execute_query", 
-    lambda state: END if is_final_answer(state) or is_plaintext_response(state) else "query_gen"
+    NodeNames.QUERY_PROCESSOR,
+    determine_next_step,
+    {
+        "end": END
+    }
 )
 
 # Compile the graph
@@ -556,10 +305,9 @@ app = workflow.compile()
 
 # --- Run Example ---
 if __name__ == "__main__":
-    from IPython.display import Image, display
-    from langchain_core.runnables.graph import MermaidDrawMethod
+    
    
-    question = "Do we have any users that are partialy offboared?"
+    question = "Do we have any users that are partially offboarded?"
     print(f"Question: {question}")
     
     events = []
