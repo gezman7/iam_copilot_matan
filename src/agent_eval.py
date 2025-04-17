@@ -28,7 +28,7 @@ from src.query_graph import QueryGraph
 # Import prompts from prompt.py
 
 # Import debug utilities
-from debug import debug_state
+from state import debug_state
 
 # --- Constants ---
 class ToolIds(str, Enum):
@@ -145,7 +145,7 @@ def get_db_metadata_tool() -> str:
     table_list = ", ".join(tables)
     
     # Get the schema for the users table (for IAM focus)
-    user_schema = db.get_table_info(["users"]) if "users" in tables else "User table not found."
+    user_schema = db.get_table_info(["Users"]) if "Users" in tables else "User table not found."
     
     return f"Available tables: {table_list}\n\nUser Table Schema:\n{user_schema}"
 
@@ -153,21 +153,6 @@ def get_db_metadata_tool() -> str:
 toolkit = SQLDatabaseToolkit(db=db, llm=ChatOllama(model="llama3.2-ctx4000", num_ctx=4000))
 tools = toolkit.get_tools()
 db_query_tool = next((t for t in tools if t.name == "sql_db_query"), None)
-if not db_query_tool:
-    @tool(name="sql_db_query")
-    def db_query_tool(query: str) -> Any:
-        """Execute a SQL query against the IAM risk database and return the results.
-        
-        Args:
-            query: The SQL query string to execute
-            
-        Returns:
-            The query results or an error message if the query failed
-        """
-        result = db.run_no_throw(query)
-        if not result:
-            return "Error: Query failed. Please rewrite your query and try again."
-        return result
 
 # --- Node Implementations ---
 def get_db_metadata_node(state: IAMAgentState) -> Dict[str, Any]:

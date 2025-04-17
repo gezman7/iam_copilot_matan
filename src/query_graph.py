@@ -1,26 +1,21 @@
 #!/usr/bin/env python3
 
-from typing import Annotated, Dict, List, Literal, Optional, Any
+from typing import Dict, List, Optional, Any
 from typing_extensions import TypedDict
-import re
-import sqlparse
 from enum import Enum
 import sys
 import os
 
-# Add the root directory to the path to make imports work
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain_core.messages import AnyMessage, AIMessage
+from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 from langchain_community.utilities import SQLDatabase
 from langgraph.graph import StateGraph, START, END
 
-# Import prompts from prompt.py
 from src.prompt import query_check_system, query_gen_system
 
-# Import SQL parser utility
 from util.sql_parser import extract_sql_from_text
 
 # --- Constants ---
@@ -52,16 +47,10 @@ class QueryGraph:
     
     def __init__(self, db: SQLDatabase, model: str = "llama3.2-ctx4000", ctx_size: int = 4000, debug: bool = False):
         """Initialize the query graph."""
-        # Database setup
+    
         self.db = db
-        
-        # LLM setup
         self.llm = ChatOllama(model=model, num_ctx=ctx_size)
-        
-        # Debug flag
         self.debug = debug
-        
-        # Graph definition
         self.graph = self._build_graph()
     
     def _debug_log(self, message: str, node_name: Optional[str] = None):
@@ -70,21 +59,14 @@ class QueryGraph:
             prefix = f"[{node_name}] " if node_name else ""
             print(f"\n=== DEBUG: {prefix}{message} ===")
     
-    def _extract_sql_from_response(self, response_text: str, original_query: str = "") -> str:
-        """
-        Extract SQL queries from text using the util.sql_parser module.
-        
-        Args:
-            response_text (str): The text that may contain SQL statements
-            original_query (str): Optional fallback if no valid query is found
-            
-        Returns:
-            str: The extracted and formatted SQL query
-            
-        Raises:
-            ValueError: If no valid SQL query found
-        """
-        return extract_sql_from_text(response_text, original_query)
+    def _debug_state(self, state: QueryState, node_name: Optional[str] = None):
+        """Print complete state information if debug is enabled."""
+        if self.debug:
+            prefix = f"[{node_name}] " if node_name else ""
+            print(f"\n=== DEBUG STATE: {prefix} ===")
+            print("COMPLETE STATE:")
+            print(state)
+            print("=== END DEBUG STATE ===")
     
     def _create_tool_call(self, name: str, args: Dict[str, Any], tool_id: str) -> AIMessage:
         """Create a standardized tool call message."""
@@ -97,10 +79,10 @@ class QueryGraph:
             }]
         )
     
-    # --- Node Implementations ---
     def _query_generator(self, state: QueryState) -> Dict[str, Any]:
         """Generate SQL query based on user question and DB metadata."""
         self._debug_log("Generating SQL query", "generator")
+        self._debug_state(state, "generator_input")
         
         try:
             # Create prompt with error context if available
@@ -108,36 +90,49 @@ class QueryGraph:
             if state.get("error") and state.get("retry_count", 0) > 0:
                 error_context = f"Previous query failed with error: {state['error']}\nPlease fix the issues."
             
+            # Get conversation history
+            messages = state.get("messages", [])
+            history_context = ""
+            if messages:
+                history_context = "\nConversation history:\n"
+                for msg in messages:
+                    if isinstance(msg, (HumanMessage, AIMessage)):
+                        role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+                        content = msg.content if hasattr(msg, "content") else ""
+                        history_context += f"{role}: {content}\n"
+            
             # Define prompt
             prompt = ChatPromptTemplate.from_messages([
                 ("system", query_gen_system),
                 ("human", f"""
-Database information:
-{state['db_metadata']}
+                            Database information:
+                            {state['db_metadata']}
 
-User question: {state['user_query']}
+                            {history_context}
 
-{error_context}
+                            User question: {state['user_query']}
 
-Generate a SQL query to answer this question.
-""")
+                            {error_context}
+
+                            Generate a SQL query to answer this question.
+                            """)
             ])
             
-            # Generate query - Fix: Use prompt.format() instead of passing the prompt directly
             response = self.llm.invoke(
                 prompt.format(
                     db_metadata=state['db_metadata'],
                     user_query=state['user_query'],
-                    error_context=error_context
+                    error_context=error_context,
+                    history_context=history_context
                 )
             )
             
             # Extract SQL
             content = response.content.strip()
             if "SELECT" in content:
-                query = self._extract_sql_from_response(content)
+                query = extract_sql_from_text(content)
                 
-                return {
+                result = {
                     "current_query": query,
                     "messages": [self._create_tool_call(
                         "sql_db_query", 
@@ -146,46 +141,57 @@ Generate a SQL query to answer this question.
                     )],
                     "is_complete": False
                 }
+                self._debug_state(result, "generator_output")
+                return result
             else:
                 # No query found - treat as error
-                return {
+                result = {
                     "error": "Failed to generate SQL query",
                     "is_complete": False
                 }
+                self._debug_state(result, "generator_output")
+                return result
         except Exception as e:
-            return {
+            result = {
                 "error": f"Error in query generation: {str(e)}",
                 "is_complete": False
             }
+            self._debug_state(result, "generator_error")
+            return result
     
     def _query_validator(self, state: QueryState) -> Dict[str, Any]:
         """Validate and potentially fix the SQL query."""
         self._debug_log("Validating query", "validator")
+        self._debug_state(state, "validator_input")
         
         query = state.get("current_query", "")
         if not query:
-            return {
+            result = {
                 "error": "No query to validate",
                 "is_complete": False
             }
+            self._debug_state(result, "validator_error")
+            return result
         
         try:
-            # Create validation prompt
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", query_check_system),
-                ("human", f"Validate this SQL query: {query}")
-            ])
+
+            # TODO: if i get the position, add validator agent - it's too late now..
+
+            # # Create validation prompt
+            # prompt = ChatPromptTemplate.from_messages([
+            #     ("system", query_check_system),
+            #     ("human", f"Validate this SQL query: {query}")
+            # ])
             
-            # Validate query - Fix: Use prompt.format() instead of passing the prompt directly
-            response = self.llm.invoke(
-                prompt.format(query=query)
-            )
+            # response = self.llm.invoke(
+            #     prompt.format(query=query)
+            # )
             
             # Extract validated query
-            validated_query = self._extract_sql_from_response(response.content, query)
+            validated_query = extract_sql_from_text( query)
             
             # Return the validated query for execution
-            return {
+            result = {
                 "current_query": validated_query,
                 "messages": [self._create_tool_call(
                     "sql_db_query", 
@@ -194,22 +200,29 @@ Generate a SQL query to answer this question.
                 )],
                 "is_complete": False
             }
+            self._debug_state(result, "validator_output")
+            return result
         except Exception as e:
-            return {
+            result = {
                 "error": f"Error in query validation: {str(e)}",
                 "is_complete": False
             }
+            self._debug_state(result, "validator_error")
+            return result
     
     def _query_executor(self, state: QueryState) -> Dict[str, Any]:
         """Execute the SQL query."""
         self._debug_log("Executing query", "executor")
+        self._debug_state(state, "executor_input")
         
         query = state.get("current_query", "")
         if not query:
-            return {
+            result = {
                 "error": "No query to execute",
                 "is_complete": False
             }
+            self._debug_state(result, "executor_error")
+            return result
         
         try:
             # Execute query
@@ -217,46 +230,59 @@ Generate a SQL query to answer this question.
             
             if result and not result.startswith("Error"):
                 # Success
-                return {
+                success_result = {
                     "query_result": result,
                     "is_complete": True
                 }
+                self._debug_state(success_result, "executor_success")
+                return success_result
             else:
                 # Query execution failed
-                return {
+                error_result = {
                     "error": f"Query execution failed: {result}",
                     "is_complete": False
                 }
+                self._debug_state(error_result, "executor_failure")
+                return error_result
         except Exception as e:
-            return {
+            error_result = {
                 "error": f"Error executing query: {str(e)}",
                 "is_complete": False
             }
+            self._debug_state(error_result, "executor_exception")
+            return error_result
     
     def _error_handler(self, state: QueryState) -> Dict[str, Any]:
         """Handle errors and potentially retry."""
         self._debug_log(f"Handling error: {state.get('error')}", "error_handler")
+        self._debug_state(state, "error_handler_input")
         
         # Increment retry count
         retry_count = state.get("retry_count", 0) + 1
         
         # Check retry limit
         if retry_count >= 3:
-            return {
+            result = {
                 "retry_count": retry_count,
                 "query_result": f"Error: {state.get('error')}. Maximum retries reached.",
                 "is_complete": True
             }
+            self._debug_state(result, "error_handler_max_retries")
+            return result
         
         # Clear current query to force regeneration and continue
-        return {
+        result = {
             "retry_count": retry_count,
             "current_query": None,
             "is_complete": False
         }
+        self._debug_state(result, "error_handler_retry")
+        return result
     
     def _determine_next(self, state: QueryState) -> str:
         """Determine the next node to execute."""
+        self._debug_state(state, "router_input")
+        
         # Check if processing is complete
         if state.get("is_complete", False):
             self._debug_log("Processing complete", "router")
@@ -336,5 +362,13 @@ Generate a SQL query to answer this question.
             "is_complete": False
         }
         
+        self._debug_log("Starting query graph execution", "execute")
+        self._debug_state(initial_state, "initial_state")
+        
         # Execute graph
-        return self.graph.invoke(initial_state) 
+        result = self.graph.invoke(initial_state)
+        
+        self._debug_log("Query graph execution completed", "execute")
+        self._debug_state(result, "final_state")
+        
+        return result 

@@ -3,7 +3,11 @@
 import os
 import sqlite3
 from langchain_community.utilities import SQLDatabase
-from src.agent_eval import list_tables_tool, get_schema_tool, db_query_tool
+from agent_eval import list_tables_tool, get_schema_tool, db_query_tool
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 # Set up database connection (same as in agent_eval.py)
 DB_PATH = "iam_risk.db"

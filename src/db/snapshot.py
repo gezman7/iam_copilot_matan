@@ -1,7 +1,7 @@
 from typing import Any, Dict, List
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from models import RiskTopic
+from src.models import RiskTopic
 
 
 @dataclass

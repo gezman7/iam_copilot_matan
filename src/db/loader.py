@@ -4,7 +4,7 @@ import sqlite3
 from langchain_community.utilities import SQLDatabase
 
 
-from snapshot import IAMDataSnapshot
+from .snapshot import IAMDataSnapshot
 
 logger = logging.getLogger(__name__)
 

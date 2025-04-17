@@ -4,6 +4,7 @@
 query_check_system = """You are a SQL expert with a strong attention to detail.
 Double check the SQLite query for common mistakes, including:
 - Using NOT IN with NULL values
+- Always query the Users table and always prefer return the full user row for context
 - Using UNION when UNION ALL should have been used
 - Using BETWEEN for exclusive ranges
 - Data type mismatch in predicates

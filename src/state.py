@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import tiktoken
-from typing import Optional, Dict, List, Any, TypedDict
+from typing import Optional, List, Any, TypedDict
 
 # Define IAMAgentState type locally using TypedDict to avoid circular imports
 # This should match the definition in agent_eval.py
@@ -24,6 +24,11 @@ def debug_state(state_dict: IAMAgentState, node_name=None) -> IAMAgentState:
         return state_dict
         
     print(f"\n==== DEBUG STATE {'for ' + node_name if node_name else ''} ====")
+    
+    # Print complete state for debugging
+    print("COMPLETE STATE:")
+    print(state_dict)
+    print("\nSTATE DETAILS:")
     
     # Log all state keys and values for complete node output
     print("State keys:")

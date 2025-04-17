@@ -3,8 +3,8 @@ import sqlite3
 import json
 import logging
 from typing import Dict, Any, List
-from snapshot import IAMDataSnapshot
-from models import RiskTopic
+from .snapshot import IAMDataSnapshot
+from src.models import RiskTopic
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
