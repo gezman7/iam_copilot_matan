@@ -10,7 +10,7 @@ from src.models import RiskTopic
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def create_risk_view(snapshot: IAMDataSnapshot, db_path: str) -> None:
+def create_risk_view(snapshot: IAMDataSnapshot, db_path: str, force_recreate: bool = False) -> None:
     """Create a SQLite database with risk information from an IAM data snapshot.
     
     This function analyzes an IAM data snapshot for various risk indicators,
@@ -25,11 +25,17 @@ def create_risk_view(snapshot: IAMDataSnapshot, db_path: str) -> None:
     Args:
         snapshot: The IAM data snapshot to analyze for risks
         db_path: Path to the SQLite database file to create
+        force_recreate: If True, delete existing database before creating a new one.
+                       If False, only create if it doesn't exist.
     """
-    # Remove existing database if it exists
+    # Remove existing database if it exists and force_recreate is True
     if os.path.exists(db_path):
-        os.remove(db_path)
-        logger.info(f"Removed existing database at {db_path}")
+        if force_recreate:
+            os.remove(db_path)
+            logger.info(f"Removed existing database at {db_path}")
+        else:
+            logger.info(f"Database already exists at {db_path}, skipping creation")
+            return
     
     # Create a new SQLite database
     conn = sqlite3.connect(db_path)

@@ -5,6 +5,7 @@ from typing_extensions import TypedDict
 from enum import Enum
 import sys
 import os
+import logging
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -14,8 +15,8 @@ from langchain_ollama import ChatOllama
 from langchain_community.utilities import SQLDatabase
 from langgraph.graph import StateGraph, START, END
 
-from src.prompt import query_check_system, query_gen_system
-
+from src.llm_context.prompt import query_check_system, query_gen_system
+from util.debug import debug_log, debug_state, setup_logger
 from util.sql_parser import extract_sql_from_text
 
 # --- Constants ---
@@ -42,31 +43,21 @@ class QueryState(TypedDict):
     query_result: Optional[str]              # Result of the executed query
     is_complete: bool                        # Whether processing is complete
 
-class QueryGraph:
-    """A simplified graph for SQL query generation, validation, and execution."""
+class IAMQueryAgent:
     
-    def __init__(self, db: SQLDatabase, model: str = "llama3.2-ctx4000", ctx_size: int = 4000, debug: bool = False):
+    def __init__(self, db: SQLDatabase, model: str = "llama3.2-ctx4000", ctx_size: int = 4000, debug: bool = False, session_id: str = None):
         """Initialize the query graph."""
     
         self.db = db
         self.llm = ChatOllama(model=model, num_ctx=ctx_size)
         self.debug = debug
         self.graph = self._build_graph()
-    
-    def _debug_log(self, message: str, node_name: Optional[str] = None):
-        """Print debug information if debug is enabled."""
-        if self.debug:
-            prefix = f"[{node_name}] " if node_name else ""
-            print(f"\n=== DEBUG: {prefix}{message} ===")
-    
-    def _debug_state(self, state: QueryState, node_name: Optional[str] = None):
-        """Print complete state information if debug is enabled."""
-        if self.debug:
-            prefix = f"[{node_name}] " if node_name else ""
-            print(f"\n=== DEBUG STATE: {prefix} ===")
-            print("COMPLETE STATE:")
-            print(state)
-            print("=== END DEBUG STATE ===")
+        
+        # Set up logger if in debug mode
+        if debug:
+            self.logger = setup_logger(session_id)
+        else:
+            self.logger = logging.getLogger(__name__)
     
     def _create_tool_call(self, name: str, args: Dict[str, Any], tool_id: str) -> AIMessage:
         """Create a standardized tool call message."""
@@ -81,8 +72,9 @@ class QueryGraph:
     
     def _query_generator(self, state: QueryState) -> Dict[str, Any]:
         """Generate SQL query based on user question and DB metadata."""
-        self._debug_log("Generating SQL query", "generator")
-        self._debug_state(state, "generator_input")
+        if self.debug:
+            debug_log(self.logger, "Generating SQL query", "generator")
+            debug_state(self.logger, state, "generator_input")
         
         try:
             # Create prompt with error context if available
@@ -141,7 +133,8 @@ class QueryGraph:
                     )],
                     "is_complete": False
                 }
-                self._debug_state(result, "generator_output")
+                if self.debug:
+                    debug_state(self.logger, result, "generator_output")
                 return result
             else:
                 # No query found - treat as error
@@ -149,20 +142,23 @@ class QueryGraph:
                     "error": "Failed to generate SQL query",
                     "is_complete": False
                 }
-                self._debug_state(result, "generator_output")
+                if self.debug:
+                    debug_state(self.logger, result, "generator_output")
                 return result
         except Exception as e:
             result = {
                 "error": f"Error in query generation: {str(e)}",
                 "is_complete": False
             }
-            self._debug_state(result, "generator_error")
+            if self.debug:
+                debug_state(self.logger, result, "generator_error")
             return result
     
     def _query_validator(self, state: QueryState) -> Dict[str, Any]:
         """Validate and potentially fix the SQL query."""
-        self._debug_log("Validating query", "validator")
-        self._debug_state(state, "validator_input")
+        if self.debug:
+            debug_log(self.logger, "Validating query", "validator")
+            debug_state(self.logger, state, "validator_input")
         
         query = state.get("current_query", "")
         if not query:
@@ -170,25 +166,13 @@ class QueryGraph:
                 "error": "No query to validate",
                 "is_complete": False
             }
-            self._debug_state(result, "validator_error")
+            if self.debug:
+                debug_state(self.logger, result, "validator_error")
             return result
         
         try:
-
-            # TODO: if i get the position, add validator agent - it's too late now..
-
-            # # Create validation prompt
-            # prompt = ChatPromptTemplate.from_messages([
-            #     ("system", query_check_system),
-            #     ("human", f"Validate this SQL query: {query}")
-            # ])
-            
-            # response = self.llm.invoke(
-            #     prompt.format(query=query)
-            # )
-            
             # Extract validated query
-            validated_query = extract_sql_from_text( query)
+            validated_query = extract_sql_from_text(query)
             
             # Return the validated query for execution
             result = {
@@ -200,20 +184,23 @@ class QueryGraph:
                 )],
                 "is_complete": False
             }
-            self._debug_state(result, "validator_output")
+            if self.debug:
+                debug_state(self.logger, result, "validator_output")
             return result
         except Exception as e:
             result = {
                 "error": f"Error in query validation: {str(e)}",
                 "is_complete": False
             }
-            self._debug_state(result, "validator_error")
+            if self.debug:
+                debug_state(self.logger, result, "validator_error")
             return result
     
     def _query_executor(self, state: QueryState) -> Dict[str, Any]:
         """Execute the SQL query."""
-        self._debug_log("Executing query", "executor")
-        self._debug_state(state, "executor_input")
+        if self.debug:
+            debug_log(self.logger, "Executing query", "executor")
+            debug_state(self.logger, state, "executor_input")
         
         query = state.get("current_query", "")
         if not query:
@@ -221,7 +208,8 @@ class QueryGraph:
                 "error": "No query to execute",
                 "is_complete": False
             }
-            self._debug_state(result, "executor_error")
+            if self.debug:
+                debug_state(self.logger, result, "executor_error")
             return result
         
         try:
@@ -234,7 +222,8 @@ class QueryGraph:
                     "query_result": result,
                     "is_complete": True
                 }
-                self._debug_state(success_result, "executor_success")
+                if self.debug:
+                    debug_state(self.logger, success_result, "executor_success")
                 return success_result
             else:
                 # Query execution failed
@@ -242,20 +231,23 @@ class QueryGraph:
                     "error": f"Query execution failed: {result}",
                     "is_complete": False
                 }
-                self._debug_state(error_result, "executor_failure")
+                if self.debug:
+                    debug_state(self.logger, error_result, "executor_failure")
                 return error_result
         except Exception as e:
             error_result = {
                 "error": f"Error executing query: {str(e)}",
                 "is_complete": False
             }
-            self._debug_state(error_result, "executor_exception")
+            if self.debug:
+                debug_state(self.logger, error_result, "executor_exception")
             return error_result
     
     def _error_handler(self, state: QueryState) -> Dict[str, Any]:
         """Handle errors and potentially retry."""
-        self._debug_log(f"Handling error: {state.get('error')}", "error_handler")
-        self._debug_state(state, "error_handler_input")
+        if self.debug:
+            debug_log(self.logger, f"Handling error: {state.get('error')}", "error_handler")
+            debug_state(self.logger, state, "error_handler_input")
         
         # Increment retry count
         retry_count = state.get("retry_count", 0) + 1
@@ -267,7 +259,8 @@ class QueryGraph:
                 "query_result": f"Error: {state.get('error')}. Maximum retries reached.",
                 "is_complete": True
             }
-            self._debug_state(result, "error_handler_max_retries")
+            if self.debug:
+                debug_state(self.logger, result, "error_handler_max_retries")
             return result
         
         # Clear current query to force regeneration and continue
@@ -276,29 +269,35 @@ class QueryGraph:
             "current_query": None,
             "is_complete": False
         }
-        self._debug_state(result, "error_handler_retry")
+        if self.debug:
+            debug_state(self.logger, result, "error_handler_retry")
         return result
     
     def _determine_next(self, state: QueryState) -> str:
         """Determine the next node to execute."""
-        self._debug_state(state, "router_input")
+        if self.debug:
+            debug_state(self.logger, state, "router_input")
         
         # Check if processing is complete
         if state.get("is_complete", False):
-            self._debug_log("Processing complete", "router")
+            if self.debug:
+                debug_log(self.logger, "Processing complete", "router")
             return "end"
         
         # Check for errors
         if state.get("error"):
-            self._debug_log("Error detected, routing to error handler", "router")
+            if self.debug:
+                debug_log(self.logger, "Error detected, routing to error handler", "router")
             return "error_handler"
         
         # Determine based on state
         if not state.get("current_query"):
-            self._debug_log("No query, routing to generator", "router")
+            if self.debug:
+                debug_log(self.logger, "No query, routing to generator", "router")
             return "query_generator"
         else:
-            self._debug_log("Query exists, routing to validator", "router")
+            if self.debug:
+                debug_log(self.logger, "Query exists, routing to validator", "router")
             return "query_validator"
     
     def _build_graph(self) -> Any:
@@ -362,13 +361,15 @@ class QueryGraph:
             "is_complete": False
         }
         
-        self._debug_log("Starting query graph execution", "execute")
-        self._debug_state(initial_state, "initial_state")
+        if self.debug:
+            debug_log(self.logger, "Starting query graph execution", "execute")
+            debug_state(self.logger, initial_state, "initial_state")
         
         # Execute graph
         result = self.graph.invoke(initial_state)
         
-        self._debug_log("Query graph execution completed", "execute")
-        self._debug_state(result, "final_state")
+        if self.debug:
+            debug_log(self.logger, "Query graph execution completed", "execute")
+            debug_state(self.logger, result, "final_state")
         
         return result 
