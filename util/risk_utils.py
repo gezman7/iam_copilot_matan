@@ -93,47 +93,60 @@ def find_risk_type(
         
     return best_risk_type, False
 
-def has_user_data(query_result: str) -> bool:
+def has_user_data(query_result) -> bool:
     """Check if the query result contains user data.
     
     Args:
-        query_result: SQL query result string
+        query_result: SQL query result (can be string or tuple/list result)
         
     Returns:
         True if user data is detected, False otherwise
     """
     if not query_result:
         return False
+    
+    # Handle count query results like [(8,)]
+    if isinstance(query_result, (list, tuple)):
+        # Check if we have a non-zero count result
+        if len(query_result) == 1 and isinstance(query_result[0], tuple) and len(query_result[0]) == 1:
+            # This is likely a COUNT result like [(8,)]
+            count_value = query_result[0][0]
+            return count_value > 0
+    
+    # If it's a string, proceed with regex checks
+    if isinstance(query_result, str):
+        # Look for patterns that indicate user data
+        user_data_patterns = [
+            r"user_id",
+            r"username",
+            r"email",
+            r"name",
+            r"\|\s*\d+\s*\|",  # Matches pipe-delimited data with numbers
+            r"row\(s\) returned"
+        ]
         
-    # Look for patterns that indicate user data
-    user_data_patterns = [
-        r"user_id",
-        r"username",
-        r"email",
-        r"name",
-        r"\|\s*\d+\s*\|",  # Matches pipe-delimited data with numbers
-        r"row\(s\) returned"
-    ]
+        # Check if the result is empty or indicates no data
+        empty_result_patterns = [
+            r"no rows",
+            r"0 row\(s\) returned",
+            r"no results",
+            r"empty result",
+            r"no data"
+        ]
+        
+        # Check for empty result patterns
+        for pattern in empty_result_patterns:
+            if re.search(pattern, query_result, re.IGNORECASE):
+                return False
+                
+        # Check for user data patterns
+        for pattern in user_data_patterns:
+            if re.search(pattern, query_result, re.IGNORECASE):
+                return True
+                
+        # Default to assuming there is data if we can't determine otherwise
+        # Check if result has substantial content
+        return len(query_result.strip()) > 20
     
-    # Check if the result is empty or indicates no data
-    empty_result_patterns = [
-        r"no rows",
-        r"0 row\(s\) returned",
-        r"no results",
-        r"empty result",
-        r"no data"
-    ]
-    
-    # Check for empty result patterns
-    for pattern in empty_result_patterns:
-        if re.search(pattern, query_result, re.IGNORECASE):
-            return False
-            
-    # Check for user data patterns
-    for pattern in user_data_patterns:
-        if re.search(pattern, query_result, re.IGNORECASE):
-            return True
-            
-    # Default to assuming there is data if we can't determine otherwise
-    # Check if result has substantial content
-    return len(query_result.strip()) > 20 
+    # For other result types, check if there's any content
+    return bool(query_result) 

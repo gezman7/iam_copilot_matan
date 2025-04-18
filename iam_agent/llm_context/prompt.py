@@ -55,6 +55,7 @@ MFAStatus: none, sms, authenticator_app, hardware_security_key, biometric, push_
 AccountType: regular, service, local
 Department: Engineering, IT, Finance, Marketing, Sales, HR
 Position: (e.g.) Software Engineer, IT Manager, Accountant, DevOps Engineer, etc.
+
 """
 
 # New prompts for IAMCopilot

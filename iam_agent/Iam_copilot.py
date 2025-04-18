@@ -13,10 +13,11 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, START, END
 from langchain.globals import set_debug
 
-from src.iam_query import IAMQueryAgent
-from src.state import IAMAgentState
-from src.llm_context.prompt import iam_copilot_system, response_system_prompt, error_response_prompt, congrats_message
-from src.llm_context.guidelines import GUIDELINES, MINIMAL_GUIDELINES, GENERAL_GUIDELINE, MINIMAL_GENERAL_GUIDELINE
+from iam_agent.iam_query import IAMQueryAgent
+from iam_agent.llm_context.db_schema import RISK_VIEW_METADATA
+from iam_agent.state import IAMAgentState
+from iam_agent.llm_context.prompt import iam_copilot_system, response_system_prompt, error_response_prompt, congrats_message
+from iam_agent.llm_context.guidelines import GUIDELINES, MINIMAL_GUIDELINES, GENERAL_GUIDELINE, MINIMAL_GENERAL_GUIDELINE
 from util.debug import setup_logger, debug_log, debug_state, count_tokens
 from util.risk_utils import find_risk_type, has_user_data
 
@@ -114,6 +115,12 @@ class IAMCopilot:
         # Compile with memory checkpointer
         return workflow.compile(checkpointer=self.memory)
     
+    def _get_db_metadata(self) -> str:
+        """Get database metadata including table names and schema."""
+        return RISK_VIEW_METADATA
+            # Get table names from the database
+           
+    
     def _query_processor_node(self, state: IAMAgentState) -> Dict[str, Any]:
         """Process query with conversation history."""
         if self.debug:
@@ -149,6 +156,9 @@ class IAMCopilot:
                     debug_state(self.logger, error_state, "query_processor_error")
                 return error_state
             
+            # Get database metadata
+            db_metadata = self._get_db_metadata()
+            
             # Create QueryGraph with conversation history
             query_graph = IAMQueryAgent(
                 db=self.db,
@@ -160,7 +170,7 @@ class IAMCopilot:
             # Execute query with history
             result = query_graph.execute(
                 user_query=user_question,
-                db_metadata=state.get("db_metadata", ""),
+                db_metadata=db_metadata,
                 messages=messages
             )
             
@@ -175,7 +185,8 @@ class IAMCopilot:
                 "has_final_answer": False,  # Will be set by response generator
                 "thread_id": thread_id,  # Preserve thread_id
                 "error": result.get("error"),
-                "user_query": user_question  # Store original query for response generator
+                "user_query": user_question,  # Store original query for response generator
+                "db_metadata": db_metadata  # Store metadata in state
             }
             
             if self.debug:
@@ -270,7 +281,13 @@ class IAMCopilot:
                 ])
                 
                 # Generate error response
-                response = self.llm.invoke(prompt.format_prompt())
+                response = self.llm.invoke(
+                    prompt.format(
+                        conversation_history=conversation_history,
+                        user_query=user_query,
+                        error_response_prompt=error_response_prompt
+                    )
+                )
                 
                 # Update state with error response
                 result_state = {
@@ -369,7 +386,14 @@ class IAMCopilot:
                 ])
                 
                 # Generate response
-                response = self.llm.invoke(prompt.format_prompt())
+                response = self.llm.invoke(
+                    prompt.format(
+                        conversation_history=conversation_history,
+                        user_query=user_query,
+                        query_result=query_result,
+                        guideline_text=guideline_text
+                    )
+                )
                 
                 # Update state with response
                 result_state = {
@@ -461,8 +485,46 @@ class IAMCopilot:
         config = {"configurable": {"thread_id": thread_id}}
         
         # Stream results with thread config
+        last_content = ""
+        chunk_count = 0
+        
+        if self.debug:
+            debug_log(self.logger, "Starting to stream results", "stream_query")
+            
         async for event in self.workflow.astream(initial_state, config):
-            yield event
+            # Format events for the CLI
+            chunk_count += 1
+            
+            if self.debug:
+                debug_log(self.logger, f"Got event {chunk_count}, type: {type(event)}", "stream_query")
+                if isinstance(event, dict):
+                    debug_log(self.logger, f"Event keys: {event.keys()}", "stream_query")
+                    
+            if event.get("error"):
+                if self.debug:
+                    debug_log(self.logger, f"Error in event: {event['error']}", "stream_query")
+                yield {"error": event["error"]}
+            else:
+                # Extract AI message content for compatibility with simple_cli
+                messages = event.get("messages", [])
+                if messages and self.debug:
+                    debug_log(self.logger, f"Found {len(messages)} messages", "stream_query")
+                    
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage):
+                        content = msg.content
+                        if content and content != last_content:
+                            if self.debug:
+                                debug_log(self.logger, f"Found new AI message content, length: {len(content)}", "stream_query")
+                            last_content = content
+                            # Yield in the format expected by the CLI
+                            yield {"chunk": content}
+                            break
+                
+                # Also yield the raw event for clients that need the full state
+                if self.debug:
+                    debug_log(self.logger, "Yielding raw event", "stream_query")
+                yield event
     
     def process_query(self, query: str, thread_id: str = None) -> Dict[str, Any]:
         """Process a query synchronously.
@@ -501,9 +563,28 @@ class IAMCopilot:
         result = self.workflow.invoke(initial_state, config)
         
         if self.debug:
+            debug_log(self.logger, f"Raw result type: {type(result)}", "process_query")
+            debug_log(self.logger, f"Raw result keys: {result.keys() if isinstance(result, dict) else 'not a dict'}", "process_query")
             debug_state(self.logger, result, "process_query_result")
-            
-        return result
+        
+        # Format result for CLI compatibility
+        formatted_result = {"messages": result.get("messages", [])}
+        
+        # Extract AI response for simple clients
+        for msg in reversed(result.get("messages", [])):
+            if isinstance(msg, AIMessage):
+                formatted_result["response"] = msg.content
+                if self.debug:
+                    debug_log(self.logger, f"Found AI message, content length: {len(msg.content)}", "process_query")
+                break
+        
+        if self.debug:
+            if "response" in formatted_result:
+                debug_log(self.logger, f"Formatted result has response with length: {len(formatted_result['response'])}", "process_query")
+            else:
+                debug_log(self.logger, "No response found in AI messages", "process_query")
+                
+        return formatted_result
     
     def close(self):
         """Close any open connections and resources."""

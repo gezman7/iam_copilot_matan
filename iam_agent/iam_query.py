@@ -15,7 +15,7 @@ from langchain_ollama import ChatOllama
 from langchain_community.utilities import SQLDatabase
 from langgraph.graph import StateGraph, START, END
 
-from src.llm_context.prompt import query_check_system, query_gen_system
+from iam_agent.llm_context.prompt import query_check_system, query_gen_system
 from util.debug import debug_log, debug_state, setup_logger
 from util.sql_parser import extract_sql_from_text
 
